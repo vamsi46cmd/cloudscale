@@ -1,0 +1,21 @@
+# In-cluster k6 load to drive CPU on the API and exercise the HorizontalPodAutoscaler.
+# Run:  kubectl -n cloudscale create configmap k6-script --from-file=load.js=tests/performance/load.js
+#       kubectl -n cloudscale apply -f infrastructure/kubernetes/hpa-load-test.yaml
+# LOGIN_RATE=1 makes every request a BCrypt login (CPU heavy), which is what pushes CPU over the HPA target.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-hpa-load
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:0.54.0
+          args: ["run", "-e", "BASE_URL=http://cs-api/api/v1", "-e", "VUS=40", "-e", "DURATION=170s", "-e", "LOGIN_RATE=1", "-e", "OUT=/tmp/result.json", "/scripts/load.js"]
+          volumeMounts: [{ name: script, mountPath: /scripts }]
+          resources: { requests: { cpu: 200m, memory: 128Mi }, limits: { memory: 512Mi } }
+      volumes: [{ name: script, configMap: { name: k6-script } }]

@@ -1,0 +1,60 @@
+image:
+  repository: cloudscale/app
+  tag: local
+  pullPolicy: IfNotPresent
+
+# Non-secret configuration, rendered into a ConfigMap. PostgreSQL and Redis are EXTERNAL services (RDS / ElastiCache in production).
+config:
+  DB_URL: jdbc:postgresql://postgres:5432/cloudscale
+  DB_USER: cloudscale
+  REDIS_HOST: redis
+  REDIS_SSL: "false"   # set "true" for ElastiCache (transit encryption)
+  OTLP_ENDPOINT: http://tempo:4318/v1/traces
+  TRACING_SAMPLING: "0.1"
+  CACHE_ENABLED: "true"
+  RATELIMIT_AUTH_CAPACITY: "10"
+  RATELIMIT_AUTH_REFILL: "0.1667"
+  RATELIMIT_API_CAPACITY: "300"
+  RATELIMIT_API_REFILL: "150"
+  DB_POOL_MAX: "10"
+  JOB_LEASE: 30s
+
+# Secrets are NEVER rendered by this chart. Create a Secret with keys DB_PASSWORD and JWT_SECRET (for example from
+# AWS Secrets Manager via External Secrets) and reference it here.
+existingSecret: cloudscale-secrets
+
+podAnnotations: {}
+
+api:
+  replicas: 2            # ignored while autoscaling is enabled
+  resources:
+    requests: { cpu: 250m, memory: 384Mi }
+    limits: { cpu: "1", memory: 640Mi }
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 60
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+worker:
+  replicas: 2
+  concurrency: 4
+  resources:
+    requests: { cpu: 100m, memory: 384Mi }
+    limits: { cpu: 500m, memory: 640Mi }
+
+service:
+  port: 80
+
+ingress:
+  enabled: false
+  className: nginx
+  host: cloudscale.example.com
+  tls:
+    enabled: false
+    secretName: cloudscale-tls
+
+terminationGracePeriodSeconds: 45   # > Spring's 30s graceful shutdown phase

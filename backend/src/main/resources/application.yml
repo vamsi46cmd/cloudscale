@@ -1,0 +1,101 @@
+server:
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: cloudscale
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/cloudscale}
+    username: ${DB_USER:cloudscale}
+    password: ${DB_PASSWORD:cloudscale-dev}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:10}
+      minimum-idle: 2
+      connection-timeout: 3000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  flyway:
+    enabled: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 500ms
+      connect-timeout: 500ms
+      ssl:
+        enabled: ${REDIS_SSL:false}   # true for ElastiCache with transit encryption
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+    generator:
+      write-bigdecimal-as-plain: true
+
+management:
+  server:
+    port: 8081            # management endpoints are on a separate, non-public port
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db   # Redis is optional (fail-open), so it does not gate readiness
+  tracing:
+    enabled: ${TRACING_ENABLED:true}
+    sampling:
+      probability: ${TRACING_SAMPLING:1.0}   # 1.0 for local demos; lower in production
+  otlp:
+    tracing:
+      endpoint: ${OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+    tags:
+      application: cloudscale
+
+springdoc:
+  api-docs:
+    path: /api/v1/openapi
+  swagger-ui:
+    path: /api/v1/docs
+
+cloudscale:
+  jwt:
+    secret: ${JWT_SECRET:}              # required, >= 32 bytes; no default on purpose
+    access-ttl: 15m
+    refresh-ttl: 14d
+  cache:
+    enabled: ${CACHE_ENABLED:true}
+    ttl: 60s
+  ratelimit:
+    enabled: ${RATELIMIT_ENABLED:true}
+    trust-forward-headers: false        # only enable behind a trusted reverse proxy
+    auth:
+      capacity: ${RATELIMIT_AUTH_CAPACITY:10}
+      refill-per-second: ${RATELIMIT_AUTH_REFILL:0.1667}   # ~10 per minute
+    api:
+      capacity: ${RATELIMIT_API_CAPACITY:300}
+      refill-per-second: ${RATELIMIT_API_REFILL:150}
+  jobs:
+    worker-enabled: ${WORKER_ENABLED:false}
+    concurrency: ${WORKER_CONCURRENCY:4}
+    poll-interval: 500ms
+    lease: ${JOB_LEASE:30s}
+    max-attempts: 3
+    backoff-base: 2s
+    test-hooks: ${JOBS_TEST_HOOKS:false}   # enables payload.simulate for failure testing; never in production
+    shutdown-grace: 25s
+    max-csv-chars: 1000000

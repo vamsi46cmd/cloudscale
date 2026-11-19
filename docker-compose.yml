@@ -1,0 +1,139 @@
+name: cloudscale
+
+# Local development stack. Credentials and the JWT secret below are development-only defaults.
+# Never reuse them in a public deployment; inject real secrets (e.g. from a secret manager) instead.
+
+x-app-env: &app-env
+  DB_URL: jdbc:postgresql://postgres:5432/cloudscale
+  DB_USER: ${POSTGRES_USER:-cloudscale}
+  DB_PASSWORD: ${POSTGRES_PASSWORD:-cloudscale-dev}
+  REDIS_HOST: redis
+  JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me-0123456789abcdef}
+  CACHE_ENABLED: ${CACHE_ENABLED:-true}
+  JOBS_TEST_HOOKS: ${JOBS_TEST_HOOKS:-false}
+  JOB_LEASE: ${JOB_LEASE:-30s}
+  RATELIMIT_API_CAPACITY: ${RATELIMIT_API_CAPACITY:-300}
+  RATELIMIT_API_REFILL: ${RATELIMIT_API_REFILL:-150}
+  RATELIMIT_AUTH_CAPACITY: ${RATELIMIT_AUTH_CAPACITY:-10}
+  RATELIMIT_AUTH_REFILL: ${RATELIMIT_AUTH_REFILL:-0.1667}
+  DB_POOL_MAX: ${DB_POOL_MAX:-10}
+  OTLP_ENDPOINT: http://tempo:4318/v1/traces
+  TRACING_SAMPLING: ${TRACING_SAMPLING:-1.0}
+  JAVA_TOOL_OPTIONS: -Xms128m
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_DB: cloudscale
+      POSTGRES_USER: ${POSTGRES_USER:-cloudscale}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cloudscale-dev}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cloudscale} -d cloudscale"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    mem_limit: 512m
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    mem_limit: 192m
+
+  api:
+    build: ./backend
+    image: cloudscale/app:local
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      <<: *app-env
+      WORKER_ENABLED: "false"
+    ports:
+      - "127.0.0.1:8080:8080"   # public API
+      - "127.0.0.1:8081:8081"   # management (health, metrics): keep internal in real deployments
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/8081; printf \"GET /actuator/health/readiness HTTP/1.0\\r\\n\\r\\n\" >&3; grep -q \" 200\" <&3'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 25s
+    mem_limit: 640m
+    stop_grace_period: 40s
+    restart: unless-stopped
+
+  worker:
+    image: cloudscale/app:local
+    depends_on:
+      api: { condition: service_healthy }   # api runs the Flyway migrations first
+    environment:
+      <<: *app-env
+      WORKER_ENABLED: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/8081; printf \"GET /actuator/health/liveness HTTP/1.0\\r\\n\\r\\n\" >&3; grep -q \" 200\" <&3'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 25s
+    mem_limit: 640m
+    stop_grace_period: 40s
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: ["-config.file=/etc/tempo.yml"]
+    volumes:
+      - ./infrastructure/tempo/tempo.yml:/etc/tempo.yml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "127.0.0.1:3200:3200"   # Tempo query API (Grafana reads it over the compose network)
+    mem_limit: 256m
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      api: { condition: service_healthy }
+    mem_limit: 256m
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin-dev}   # development only
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+      - tempo
+    mem_limit: 256m
+
+volumes:
+  postgres-data:
+  prometheus-data:
+  grafana-data:
+  tempo-data:

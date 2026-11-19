@@ -1,0 +1,18 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Docker DNS resolves "api" and "worker" to every container of that service, so all replicas are scraped.
+  - job_name: cloudscale-api
+    metrics_path: /actuator/prometheus
+    dns_sd_configs:
+      - names: ["api"]
+        type: A
+        port: 8081
+  - job_name: cloudscale-worker
+    metrics_path: /actuator/prometheus
+    dns_sd_configs:
+      - names: ["worker"]
+        type: A
+        port: 8081

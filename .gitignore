@@ -1,0 +1,13 @@
+target/
+.env
+*.log
+.DS_Store
+.idea/
+.vscode/
+# Terraform: never commit state, plans or provider binaries (the lock file IS committed)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+*.tfvars

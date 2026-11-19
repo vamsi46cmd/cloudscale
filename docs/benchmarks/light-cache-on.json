@@ -1,0 +1,44 @@
+{
+  "vus": 10,
+  "duration": "30s",
+  "requests": 44233,
+  "requestsPerSecond": 1440.8,
+  "latencyMs": {
+    "avg": 6.76,
+    "p50": 2.64,
+    "p95": 10.26,
+    "p99": 168.43,
+    "max": 451.68
+  },
+  "errorRate": 0,
+  "label": "light-cache-on",
+  "cacheEnabled": true,
+  "containerSamplesMidRun": [
+    {
+      "name": "cloudscale-api-1",
+      "cpu": "326.37%",
+      "mem": "399.8MiB / 640MiB"
+    },
+    {
+      "name": "cloudscale-postgres-1",
+      "cpu": "27.70%",
+      "mem": "66.15MiB / 512MiB"
+    },
+    {
+      "name": "cloudscale-redis-1",
+      "cpu": "6.19%",
+      "mem": "4.008MiB / 192MiB"
+    },
+    {
+      "name": "cloudscale-worker-1",
+      "cpu": "0.74%",
+      "mem": "316.9MiB / 640MiB"
+    },
+    {
+      "name": "cloudscale-worker-2",
+      "cpu": "1.05%",
+      "mem": "307.9MiB / 640MiB"
+    }
+  ],
+  "dbConnectionsMidRun": 19
+}

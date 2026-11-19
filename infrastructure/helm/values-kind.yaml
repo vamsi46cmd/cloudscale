@@ -1,0 +1,7 @@
+# Overrides for the local kind cluster only (tracing backend and real secrets manager are not present).
+config:
+  TRACING_ENABLED: "false"
+  RATELIMIT_AUTH_CAPACITY: "100000"   # allow the load test to log in repeatedly; production keeps the default of 10
+  RATELIMIT_AUTH_REFILL: "1000"
+  RATELIMIT_API_CAPACITY: "1000000"
+  RATELIMIT_API_REFILL: "1000000"
